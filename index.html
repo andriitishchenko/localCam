@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Local P2P Stream</title>
+  <style>
+    body { font-family: sans-serif; padding: 1em; }
+    video { width: 100%; max-width: 480px; margin: 1em 0; background: black; }
+    textarea { width: 100%; height: 100px; margin: 0.5em 0; }
+    button { margin: 0.5em 0; padding: 0.5em 1em; }
+  </style>
+</head>
+<body>
+  <h1>📡 Local P2P Stream</h1>
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+
+  <div>
+    <button onclick="startCamera()">🎥 (Server 1) Start Camera</button>
+    <button onclick="createOffer()">📤 (Server 2) Create Offer</button>
+    <button onclick="acceptOffer()">📥 (Client 1) Paste Offer</button>
+    <button onclick="acceptAnswer()">✅(Server 3) Confirm Answer</button>
+  </div>
+
+  <label>Signaling (copy-paste):</label>
+  <textarea id="signalData"></textarea>
+
+  <script>
+    let localStream;
+    let peerConnection;
+    const config = {
+      iceServers: [] // No STUN servers, fully local
+    };
+
+    async function startCamera() {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      document.getElementById('localVideo').srcObject = localStream;
+    }
+
+    async function createPeerConnection() {
+      peerConnection = new RTCPeerConnection(config);
+
+      peerConnection.ontrack = event => {
+        document.getElementById('remoteVideo').srcObject = event.streams[0];
+      };
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) return;
+        // ICE gathering done — show signaling data
+        document.getElementById('signalData').value = JSON.stringify(peerConnection.localDescription);
+      };
+
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStream);
+        });
+      }
+    }
+
+    async function createOffer() {
+      await createPeerConnection();
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+    }
+
+    async function acceptOffer() {
+      const offer = JSON.parse(document.getElementById('signalData').value);
+      await createPeerConnection();
+      await peerConnection.setRemoteDescription(offer);
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      peerConnection.onicecandidate = event => {
+        if (event.candidate) return;
+        document.getElementById('signalData').value = JSON.stringify(peerConnection.localDescription);
+      };
+    }
+
+    async function acceptAnswer() {
+      const answer = JSON.parse(document.getElementById('signalData').value);
+      await peerConnection.setRemoteDescription(answer);
+    }
+  </script>
+</body>
+</html>
